@@ -2,8 +2,9 @@ NAME     := asgctl
 VERSION  := v0.1.0
 REVISION := $(shell git rev-parse --short HEAD)
 
-SRCS    := $(shell find . -type f -name '*.go')
-LDFLAGS := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(REVISION)\" -extldflags \"-static\""
+SRCS     := $(shell find . -type f -name '*.go')
+NOVENDOR := $(shell go list ./... | grep -v vendor)
+LDFLAGS  := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(REVISION)\" -extldflags \"-static\""
 
 DIST_DIRS := find * -type d -exec
 
@@ -16,7 +17,7 @@ bin/$(NAME): $(SRCS)
 ci-test:
 	echo "" > coverage.txt
 	set -e; \
-	for d in `glide novendor`; do \
+	for d in $(NOVENDOR); do \
 		go test -coverprofile=profile.out -covermode=atomic -v $$d; \
 		if [ -f profile.out ]; then \
 			cat profile.out >> coverage.txt; \
@@ -38,9 +39,15 @@ cross-build: deps
 		done; \
 	done
 
+.PHONY: dep
+dep:
+ifeq ($(shell command -v dep 2> /dev/null),)
+	go get -u github.com/golang/dep/cmd/dep
+endif
+
 .PHONY: deps
-deps: glide
-	glide install
+deps: dep
+	dep ensure -v
 
 .PHONY: dist
 dist:
@@ -50,12 +57,6 @@ dist:
 	$(DIST_DIRS) tar -zcf $(NAME)-$(VERSION)-{}.tar.gz {} \; && \
 	$(DIST_DIRS) zip -r $(NAME)-$(VERSION)-{}.zip {} \; && \
 	cd ..
-
-.PHONY: glide
-glide:
-ifeq ($(shell command -v glide 2> /dev/null),)
-	curl https://glide.sh/get | sh
-endif
 
 .PHONY: install
 install:
@@ -68,8 +69,8 @@ release:
 
 .PHONY: test
 test:
-	go test -cover -v `glide novendor`
+	go test -cover -race -v $(NOVENDOR)
 
 .PHONY: update-deps
-update-deps: glide
-	glide update
+update-deps: dep
+	dep ensure -update -v
